@@ -1,19 +1,12 @@
 import { RawArticle, NewsFetcher } from "./types";
 
-function buildQuery(name: string, market: string): string {
-  if (market === "CN") {
-    // Use English name — Chinese locale returns few results
-    return `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`;
-  }
-  if (market === "HK") {
-    return `https://news.google.com/rss/search?q=${encodeURIComponent(name + " Holdings stock")}&hl=en-US&gl=US&ceid=US:en`;
-  }
+function buildQuery(name: string): string {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`;
 }
 
-export const fetchGoogleNews: NewsFetcher = async ({ name, market, stockId }) => {
+export const fetchGoogleNews: NewsFetcher = async ({ name, stockId }) => {
   try {
-    const url = buildQuery(name, market);
+    const url = buildQuery(name);
     const res = await fetch(url, { next: { revalidate: 0 } });
 
     if (!res.ok) return [];
