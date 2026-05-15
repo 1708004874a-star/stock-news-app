@@ -12,6 +12,8 @@ export interface RawArticle {
 export interface FetchNewsParams {
   symbol: string;
   name: string;
+  nameCn: string;
+  market: string;
   stockId: number;
 }
 

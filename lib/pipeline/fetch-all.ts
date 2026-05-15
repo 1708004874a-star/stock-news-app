@@ -41,7 +41,7 @@ export async function fetchAndProcessNewsBatch(batch: number): Promise<{
     const fetchers = [fetchFinnhubNews, fetchGoogleNews, fetchYahooNews];
     const results = await Promise.allSettled(
       fetchers.map((fn) =>
-        fn({ symbol: stock.symbol, name: stock.name, stockId: dbStock.id })
+        fn({ symbol: stock.symbol, name: stock.name, nameCn: stock.nameCn, market: stock.market, stockId: dbStock.id })
       )
     );
 

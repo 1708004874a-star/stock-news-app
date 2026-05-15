@@ -1,44 +1,62 @@
 import { prisma } from "./db";
 import { TRACKED_STOCKS } from "./stocks";
 
+const FINNHUB_KEY = process.env.FINNHUB_API_KEY!;
+
 export async function refreshMarketData(): Promise<void> {
-  const symbols = TRACKED_STOCKS.map((s) => s.symbol);
+  const results = await Promise.allSettled(
+    TRACKED_STOCKS.map((s) => fetchStockPrice(s.symbol))
+  );
 
-  try {
-    const symbolsParam = symbols.join(",");
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbolsParam)}`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
-    );
-
-    if (!res.ok) return;
-
-    const data: YahooQuoteResponse = await res.json();
-    const results = data.quoteResponse?.result || [];
-
-    for (const quote of results) {
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) {
+      const { symbol, price, changePct } = result.value;
       await prisma.stock.updateMany({
-        where: { symbol: quote.symbol },
-        data: {
-          price: quote.regularMarketPrice ?? undefined,
-          changePct: quote.regularMarketChangePercent ?? undefined,
-          updatedAt: new Date(),
-        },
+        where: { symbol },
+        data: { price, changePct, updatedAt: new Date() },
       });
     }
-  } catch {
-    // Market data is non-critical — silently fail
   }
 }
 
-interface YahooQuoteResponse {
-  quoteResponse?: {
-    result?: YahooQuote[];
-  };
-}
+async function fetchStockPrice(
+  symbol: string
+): Promise<{ symbol: string; price: number; changePct: number } | null> {
+  // Try Finnhub first
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.c != null && data.c > 0) {
+        return {
+          symbol,
+          price: data.c,
+          changePct: data.dp ?? 0,
+        };
+      }
+    }
+  } catch {}
 
-interface YahooQuote {
-  symbol: string;
-  regularMarketPrice?: number;
-  regularMarketChangePercent?: number;
+  // Fallback: Yahoo Finance v8
+  try {
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+      { headers: { "User-Agent": "Mozilla/5.0" } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const meta = data?.chart?.result?.[0]?.meta;
+      if (meta?.regularMarketPrice) {
+        return {
+          symbol,
+          price: meta.regularMarketPrice,
+          changePct: meta.regularMarketChangePercent ?? 0,
+        };
+      }
+    }
+  } catch {}
+
+  return null;
 }
