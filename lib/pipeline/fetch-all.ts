@@ -7,7 +7,7 @@ import { RawArticle } from "../sources/types";
 import { groupSimilarArticles } from "./dedup";
 import { summarizeArticles } from "./summarize";
 
-const BATCH_SIZE = 4;
+const BATCH_SIZE = 2;
 
 export async function fetchAndProcessNewsBatch(batch: number): Promise<{
   articlesFetched: number;

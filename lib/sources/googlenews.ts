@@ -1,26 +1,20 @@
 import { RawArticle, NewsFetcher } from "./types";
 
-function buildQueries(name: string, nameCn: string, market: string): string[] {
+function buildQuery(name: string, nameCn: string, market: string): string {
   if (market === "CN") {
-    return [
-      `https://news.google.com/rss/search?q=${encodeURIComponent(nameCn + " " + name)}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`,
-      `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`,
-    ];
+    return `https://news.google.com/rss/search?q=${encodeURIComponent(nameCn + " " + name + " 股票")}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`;
   }
   if (market === "HK") {
-    return [
-      `https://news.google.com/rss/search?q=${encodeURIComponent(nameCn + " " + name + " HKEX")}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant`,
-      `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock HKEX")}&hl=en-US&gl=US&ceid=US:en`,
-    ];
+    return `https://news.google.com/rss/search?q=${encodeURIComponent(nameCn + " " + name + " 股價")}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant`;
   }
-  return [
-    `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`,
-  ];
+  return `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`;
 }
 
-async function fetchFromUrl(url: string, stockId: number): Promise<RawArticle[]> {
+export const fetchGoogleNews: NewsFetcher = async ({ name, nameCn, market, stockId }) => {
   try {
+    const url = buildQuery(name, nameCn, market);
     const res = await fetch(url, { next: { revalidate: 0 } });
+
     if (!res.ok) return [];
 
     const text = await res.text();
@@ -51,10 +45,4 @@ async function fetchFromUrl(url: string, stockId: number): Promise<RawArticle[]>
   } catch {
     return [];
   }
-}
-
-export const fetchGoogleNews: NewsFetcher = async ({ name, nameCn, market, stockId }) => {
-  const urls = buildQueries(name, nameCn, market);
-  const results = await Promise.all(urls.map((url) => fetchFromUrl(url, stockId)));
-  return results.flat();
 };
