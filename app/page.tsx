@@ -51,7 +51,7 @@ export default function Home() {
       </div>
 
       <footer className="text-center text-xs text-text-secondary py-8">
-        数据来源：Finnhub / Google News / Yahoo Finance · AI摘要：Claude
+        数据来源：Finnhub / Google News / Yahoo Finance · AI摘要：DeepSeek
       </footer>
     </div>
   );

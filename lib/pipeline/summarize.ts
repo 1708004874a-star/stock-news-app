@@ -1,7 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
-
 interface SummaryResult {
   summary: string;
   keyPoints: string[];
@@ -12,7 +8,8 @@ export async function summarizeArticles(
   symbol: string,
   titles: string[]
 ): Promise<SummaryResult | null> {
-  if (!process.env.ANTHROPIC_API_KEY || titles.length === 0) return null;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey || titles.length === 0) return null;
 
   const titleList = titles.map((t, i) => `${i + 1}. ${t}`).join("\n");
 
@@ -25,13 +22,26 @@ Headlines:
 ${titleList}`;
 
   try {
-    const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 500,
-      messages: [{ role: "user", content: prompt }],
+    const res = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+        temperature: 0.3,
+      }),
     });
 
-    const text = (msg.content[0] as { text: string }).text.trim();
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as DeepSeekResponse;
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) return null;
+
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
@@ -43,4 +53,8 @@ ${titleList}`;
   } catch {
     return null;
   }
+}
+
+interface DeepSeekResponse {
+  choices?: { message?: { content?: string } }[];
 }
