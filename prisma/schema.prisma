@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Stock {
+  id         Int       @id @default(autoincrement())
+  symbol     String    @unique
+  name       String
+  nameCn     String    @map("name_cn")
+  market     Market
+  price      Float?
+  changePct  Float?    @map("change_pct")
+  updatedAt  DateTime? @map("updated_at")
+
+  articles   Article[]
+}
+
+model Article {
+  id          Int       @id @default(autoincrement())
+  stockId     Int       @map("stock_id")
+  title       String
+  snippet     String?
+  url         String
+  source      Source
+  publishedAt DateTime  @map("published_at")
+  fetchedAt   DateTime  @default(now()) @map("fetched_at")
+
+  stock     Stock            @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  clusters  ClusterArticle[]
+
+  @@index([stockId])
+  @@index([publishedAt])
+}
+
+model NewsCluster {
+  id                  Int       @id @default(autoincrement())
+  title               String
+  aiSummary           String?   @map("ai_summary")
+  keyPoints           Json?     @map("key_points")
+  verificationStatus  String    @default("unverified") @map("verification_status")
+  sourceCount         Int       @default(1) @map("source_count")
+  publishedAt         DateTime  @map("published_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  articles  ClusterArticle[]
+
+  @@index([publishedAt])
+  @@index([verificationStatus])
+}
+
+model ClusterArticle {
+  clusterId  Int @map("cluster_id")
+  articleId  Int @map("article_id")
+
+  cluster    NewsCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  article    Article     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([clusterId, articleId])
+}
+
+enum Market {
+  US
+  HK
+  CN
+  INDEX
+}
+
+enum Source {
+  finnhub
+  googlenews
+  yahoo
+}
