@@ -49,11 +49,12 @@ async function fetchStockPrice(
       const data = await res.json();
       const meta = data?.chart?.result?.[0]?.meta;
       if (meta?.regularMarketPrice) {
-        return {
-          symbol,
-          price: meta.regularMarketPrice,
-          changePct: meta.regularMarketChangePercent ?? 0,
-        };
+        const price = meta.regularMarketPrice;
+        const prevClose = meta.chartPreviousClose;
+        const changePct = prevClose && prevClose > 0
+          ? ((price - prevClose) / prevClose) * 100
+          : meta.regularMarketChangePercent ?? 0;
+        return { symbol, price, changePct };
       }
     }
   } catch {}
