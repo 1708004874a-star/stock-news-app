@@ -9,7 +9,10 @@ import { summarizeArticles } from "./summarize";
 
 const BATCH_SIZE = 2;
 
-export async function fetchAndProcessNewsBatch(batch: number): Promise<{
+export async function fetchAndProcessNewsBatch(
+  batch: number,
+  skipAi = false
+): Promise<{
   articlesFetched: number;
   clustersCreated: number;
   batchesTotal: number;
@@ -88,7 +91,7 @@ export async function fetchAndProcessNewsBatch(batch: number): Promise<{
 
     let aiSummary: string | null = null;
     let keyPoints: string[] = [];
-    if (dbStock) {
+    if (!skipAi && dbStock) {
       const result = await summarizeArticles(dbStock.nameCn, dbStock.symbol, titles);
       if (result) {
         aiSummary = result.summary;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { fetchAndProcessNewsBatch } from "@/lib/pipeline/fetch-all";
 
 const STALE_MINUTES = 5;
 
@@ -11,7 +12,6 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 50);
 
   try {
-    // Check staleness and fire background refresh to cron endpoint
     const latestCluster = await prisma.newsCluster.findFirst({
       orderBy: { publishedAt: "desc" },
       select: { publishedAt: true },
@@ -23,14 +23,11 @@ export async function GET(request: NextRequest) {
 
     if (isStale) {
       const batch = Math.floor(Date.now() / 60000) % 8;
-      const origin = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : request.nextUrl.origin;
-      const secret = process.env.CRON_SECRET || "";
-      // Fire-and-forget: sends HTTP request to ourselves, which Vercel handles as separate invocation
-      fetch(`${origin}/api/cron/fetch-news?batch=${batch}`, {
-        headers: { Authorization: `Bearer ${secret}` },
-      }).catch(() => {});
+      // Sync refresh, skip AI for speed. 7s cap so response isn't blocked.
+      await Promise.race([
+        fetchAndProcessNewsBatch(batch, true),
+        new Promise((r) => setTimeout(r, 7000)),
+      ]);
     }
 
     const where: Record<string, unknown> = {};
