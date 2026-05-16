@@ -23,10 +23,10 @@ export async function GET(request: NextRequest) {
 
     if (isStale) {
       const batch = Math.floor(Date.now() / 60000) % 8;
-      // Sync refresh, skip AI for speed. 7s cap so response isn't blocked.
+      // Run with AI relevance filter + summarization. 9s cap for Vercel 10s limit.
       await Promise.race([
-        fetchAndProcessNewsBatch(batch, true),
-        new Promise((r) => setTimeout(r, 7000)),
+        fetchAndProcessNewsBatch(batch, false),
+        new Promise((r) => setTimeout(r, 9000)),
       ]);
     }
 

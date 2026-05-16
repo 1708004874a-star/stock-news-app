@@ -5,7 +5,7 @@ import { fetchGoogleNews } from "../sources/googlenews";
 import { fetchYahooNews } from "../sources/yahoo";
 import { RawArticle } from "../sources/types";
 import { groupSimilarArticles } from "./dedup";
-import { summarizeArticles } from "./summarize";
+import { summarizeArticles, filterRelevantArticles } from "./summarize";
 
 const BATCH_SIZE = 2;
 
@@ -71,8 +71,24 @@ export async function fetchAndProcessNewsBatch(
     });
     if (existing) continue;
 
+    // AI relevance filter: remove articles not about this stock
+    const dbStock = await prisma.stock.findUnique({ where: { id: stockId } });
+    let filteredArticles = group.articles;
+    if (dbStock && group.articles.length > 0) {
+      const relevantIndices = await filterRelevantArticles(
+        dbStock.nameCn,
+        dbStock.symbol,
+        group.articles.map((a) => ({ title: a.title, snippet: a.snippet }))
+      );
+      if (relevantIndices.length === 0) continue;
+      filteredArticles = relevantIndices
+        .map((i) => group.articles[i])
+        .filter(Boolean);
+      if (filteredArticles.length === 0) continue;
+    }
+
     const createdArticles = await Promise.all(
-      group.articles.map((a) =>
+      filteredArticles.map((a) =>
         prisma.article.create({
           data: {
             stockId: a.stockId,
@@ -86,8 +102,7 @@ export async function fetchAndProcessNewsBatch(
       )
     );
 
-    const dbStock = await prisma.stock.findUnique({ where: { id: stockId } });
-    const titles = group.articles.map((a) => a.title);
+    const titles = filteredArticles.map((a) => a.title);
 
     let aiSummary: string | null = null;
     let keyPoints: string[] = [];
@@ -99,16 +114,17 @@ export async function fetchAndProcessNewsBatch(
       }
     }
 
+    const filteredSourceTypes = new Set(filteredArticles.map((a) => a.source));
     const verificationStatus =
-      group.sourceTypes.size >= 2 ? "verified" : "unverified";
+      filteredSourceTypes.size >= 2 ? "verified" : "unverified";
 
     await prisma.newsCluster.create({
       data: {
-        title: group.canonicalTitle,
+        title: filteredArticles[0]?.title || group.canonicalTitle,
         aiSummary,
         keyPoints: keyPoints.length > 0 ? keyPoints : undefined,
         verificationStatus,
-        sourceCount: group.sourceTypes.size,
+        sourceCount: filteredSourceTypes.size,
         publishedAt: primaryArticle.publishedAt,
         articles: {
           create: createdArticles.map((a) => ({ articleId: a.id })),
