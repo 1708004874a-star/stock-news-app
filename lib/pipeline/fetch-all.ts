@@ -71,20 +71,21 @@ export async function fetchAndProcessNewsBatch(
     });
     if (existing) continue;
 
-    // AI relevance filter: remove articles not about this stock
+    // AI relevance filter for US stocks (good coverage). Skip for HK/CN (sparse coverage).
     const dbStock = await prisma.stock.findUnique({ where: { id: stockId } });
     let filteredArticles = group.articles;
-    if (dbStock && group.articles.length > 0) {
+    if (dbStock && dbStock.market === "US" && group.articles.length > 0) {
       const relevantIndices = await filterRelevantArticles(
         dbStock.nameCn,
         dbStock.symbol,
         group.articles.map((a) => ({ title: a.title, snippet: a.snippet }))
       );
-      if (relevantIndices.length === 0) continue;
-      filteredArticles = relevantIndices
-        .map((i) => group.articles[i])
-        .filter(Boolean);
-      if (filteredArticles.length === 0) continue;
+      if (relevantIndices.length > 0) {
+        filteredArticles = relevantIndices
+          .map((i) => group.articles[i])
+          .filter(Boolean);
+      }
+      // If all filtered out, keep original (don't lose all coverage)
     }
 
     const createdArticles = await Promise.all(
