@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+const STALE_MINUTES = 5;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const market = searchParams.get("market");
@@ -9,6 +11,28 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 50);
 
   try {
+    // Check staleness and fire background refresh to cron endpoint
+    const latestCluster = await prisma.newsCluster.findFirst({
+      orderBy: { publishedAt: "desc" },
+      select: { publishedAt: true },
+    });
+
+    const staleMs = STALE_MINUTES * 60 * 1000;
+    const isStale = !latestCluster
+      || (Date.now() - latestCluster.publishedAt.getTime() > staleMs);
+
+    if (isStale) {
+      const batch = Math.floor(Date.now() / 60000) % 8;
+      const origin = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : request.nextUrl.origin;
+      const secret = process.env.CRON_SECRET || "";
+      // Fire-and-forget: sends HTTP request to ourselves, which Vercel handles as separate invocation
+      fetch(`${origin}/api/cron/fetch-news?batch=${batch}`, {
+        headers: { Authorization: `Bearer ${secret}` },
+      }).catch(() => {});
+    }
+
     const where: Record<string, unknown> = {};
 
     if (verifiedOnly) {
@@ -41,7 +65,6 @@ export async function GET(request: NextRequest) {
       take: limit + 1,
     });
 
-    // Filter by market if specified
     let filtered = clusters;
     if (market) {
       const stocks = await prisma.stock.findMany({
@@ -90,6 +113,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       items: enriched,
       nextCursor: hasMore ? String(items[items.length - 1]?.id) : null,
+      refreshing: isStale,
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
