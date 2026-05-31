@@ -4,9 +4,9 @@
 
 **AI 驱动的全球股市新闻聚合 · AI-powered global stock news aggregator**
 
-追踪美股、港股、A 股热点 — 多源抓取、相似度去重、DeepSeek 中文摘要、Vercel Cron 定时更新
+追踪美股、港股、A 股热点 — 多源抓取（含中文新闻）、相似度去重、DeepSeek 中文摘要、Vercel Cron 每小时更新
 
-Tracks US, Hong Kong, and A-share markets — multi-source fetching, similarity dedup, DeepSeek Chinese summaries, scheduled refresh on Vercel Cron
+Tracks US, Hong Kong, and A-share markets — multi-source fetching (incl. Chinese-language news), similarity dedup, DeepSeek Chinese summaries, hourly Vercel Cron refresh
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb?logo=react)](https://react.dev/)
@@ -36,10 +36,11 @@ Tracks US, Hong Kong, and A-share markets — multi-source fetching, similarity 
 
 - **🌍 多市场覆盖** — 美股（AAPL/NVDA/TSLA/BRK.B/MU/INTC/ASML/TSM/PLTR）、A 股（茅台 / 承德露露）、港股（腾讯 / 泡泡玛特），以及 S&P 500 / 纳斯达克 / 沪深 300 指数。
 - **📰 三源抓取** — 同时从 Finnhub、Google News RSS、Yahoo Finance 抓取，最大化覆盖率与可核验性。
+- **🌐 中英双语新闻** — 港股 / A 股同时发起英文和中文（`zh-CN`）Google News 查询，补齐境内中文报道，结果自动去重合并。
 - **🔗 多源核验** — 同一新闻被两个及以上独立源报道时标记为 ✅ 已核验，只看主流信息可一键过滤。
-- **🤖 AI 相关性过滤** — 对美股新闻调用 DeepSeek 剔除"标题撞名"、纯市场杂谈、行业泛文，保证页面上的每条都真正与自选股相关。
-- **🧠 AI 中文摘要** — DeepSeek 把英文标题群提炼成 1–2 句中文要点，附带关键事实清单。
-- **🔄 智能刷新** — 用户打开页面如果数据超过 5 分钟未更新，会同步触发轻量刷新；每天 0 点（UTC）由 Vercel Cron 全量刷新。
+- **🤖 AI 相关性过滤** — 对所有市场新闻调用 DeepSeek 剔除"标题撞名"、纯市场杂谈、行业泛文，保证页面上的每条都真正与自选股相关。
+- **🧠 AI 中文摘要** — DeepSeek 为所有市场（美股 / 港股 / A 股）生成 1–2 句中文要点摘要，附带关键事实清单。
+- **🔄 智能刷新** — Vercel Cron 每小时自动轮换批次，每只股票约每 8 小时完整刷新一次；数据超过 65 分钟未更新时页面加载也会触发懒刷新兜底。
 - **📊 自选股概览** — 实时价格、当日涨跌幅、最新头条，一屏看完。
 - **🌙 暗色优先 UI** — Tailwind v4，移动端友好。
 
@@ -66,7 +67,8 @@ Tracks US, Hong Kong, and A-share markets — multi-source fetching, similarity 
 └──────────────────────────────────────────────────────────────┘
        ▲                  ▲                  ▲
        │                  │                  │
-   Finnhub API        Google News RSS    Yahoo Finance v1/v8
+   Finnhub API    Google News RSS        Yahoo Finance v1/v8
+                  (en-US + zh-CN)
 ```
 
 **关键文件夹**
@@ -145,19 +147,19 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 1. 在 [Vercel](https://vercel.com/new) 导入这个仓库。
 2. 在项目 **Settings → Environment Variables** 里加入 `DATABASE_URL` / `FINNHUB_API_KEY` / `DEEPSEEK_API_KEY` / `CRON_SECRET`（三个环境都加）。
 3. 给项目挂上 **Vercel Postgres** 或 **Neon**，会自动注入 `DATABASE_URL`。
-4. 部署。`vercel.json` 已经定义了每天 UTC 0 点的 cron：
+4. 部署。`vercel.json` 已定义每小时触发的 cron：
 
    ```json
    {
      "crons": [
-       { "path": "/api/cron/fetch-news", "schedule": "0 0 * * *" }
+       { "path": "/api/cron/fetch-news", "schedule": "0 * * * *" }
      ]
    }
    ```
 
-   Vercel Cron 会自动以 `Authorization: Bearer $CRON_SECRET` 调用该端点。
+   每次 Cron 触发会根据当前 UTC 小时自动选择要刷新的批次（16 只标的分 8 批轮转，约每 8 小时完整刷新一轮）。Vercel Cron 会自动以 `Authorization: Bearer $CRON_SECRET` 调用该端点。
 
-> 💡 **白嫖小贴士**：Vercel Hobby 限制 `pg` 连接数与函数时长，本项目默认 `BATCH_SIZE=2`、`pg pool max=1`，并且在用户访问时会主动触发"懒刷新"，避免依赖单一 cron 时间窗。
+> 💡 **白嫖小贴士**：Vercel Hobby 限制 `pg` 连接数与函数时长，本项目默认 `BATCH_SIZE=2`、`pg pool max=1`。API 响应已加 `Cache-Control: s-maxage=300`，叠加每小时 cron 与 65 分钟懒刷新阈值，在免费套餐下也能保持较好的数据新鲜度。
 
 ### 📝 自定义自选股
 
@@ -220,10 +222,11 @@ The product goal is simple: **let a regular retail investor understand, in under
 
 - **🌍 Multi-market coverage** — US (AAPL/NVDA/TSLA/BRK.B/MU/INTC/ASML/TSM/PLTR), A-share (Moutai, Chengde Lolo), HK (Tencent, Pop Mart), plus S&P 500 / NASDAQ / CSI 300 indices.
 - **📰 Three-source fetching** — Finnhub, Google News RSS, and Yahoo Finance run in parallel for max coverage and cross-verification.
+- **🌐 Bilingual news for CN/HK** — Google News is queried in both English and Chinese (`zh-CN`) for Hong Kong and A-share stocks, surfacing domestic Chinese-language coverage that English-only queries miss. Results are URL-deduplicated before processing.
 - **🔗 Cross-source verification** — Stories reported by two or more independent sources get a ✅ Verified badge; a single-tap filter narrows the feed to verified only.
-- **🤖 AI relevance filter** — For US stocks, DeepSeek removes ticker-collision noise, generic market chatter, and off-topic industry articles before they hit your feed.
-- **🧠 AI Chinese summaries** — DeepSeek distills English headline clusters into a 1–2 sentence Chinese summary plus a short list of key facts.
-- **🔄 Smart refresh** — Opening the page triggers a lightweight refresh if data is older than 5 minutes; a Vercel Cron runs a full refresh daily at 00:00 UTC.
+- **🤖 AI relevance filter** — DeepSeek removes ticker-collision noise, generic market chatter, and off-topic industry articles for all markets (US, HK, CN) before they hit your feed.
+- **🧠 AI Chinese summaries** — DeepSeek produces a 1–2 sentence Chinese summary plus key bullet points for every market, not just US stocks.
+- **🔄 Smart refresh** — Vercel Cron runs hourly, rotating through batches so each stock refreshes approximately every 8 hours. A lazy refresh also fires on page load if data is older than 65 minutes.
 - **📊 Watchlist snapshot** — Live price, day change %, and latest headline at a glance.
 - **🌙 Dark-first UI** — Tailwind v4, mobile-friendly.
 
@@ -251,7 +254,8 @@ The product goal is simple: **let a regular retail investor understand, in under
 └──────────────────────────────────────────────────────────────┘
        ▲                  ▲                  ▲
        │                  │                  │
-   Finnhub API        Google News RSS    Yahoo Finance v1/v8
+   Finnhub API    Google News RSS        Yahoo Finance v1/v8
+                  (en-US + zh-CN)
 ```
 
 **Key directories**
@@ -330,19 +334,19 @@ Loop `batch` from 0 to N-1 to cover the full watchlist (small batches keep each 
 1. Import the repo from [Vercel](https://vercel.com/new).
 2. Under **Settings → Environment Variables**, add `DATABASE_URL`, `FINNHUB_API_KEY`, `DEEPSEEK_API_KEY`, and `CRON_SECRET` for all three environments.
 3. Attach **Vercel Postgres** or **Neon** — `DATABASE_URL` gets injected automatically.
-4. Deploy. `vercel.json` already defines a daily 00:00 UTC cron:
+4. Deploy. `vercel.json` defines an hourly cron:
 
    ```json
    {
      "crons": [
-       { "path": "/api/cron/fetch-news", "schedule": "0 0 * * *" }
+       { "path": "/api/cron/fetch-news", "schedule": "0 * * * *" }
      ]
    }
    ```
 
-   Vercel Cron will call the endpoint with `Authorization: Bearer $CRON_SECRET`.
+   Each run automatically selects the correct batch based on the current UTC hour (16 stocks across 8 batches → full refresh cycle every ~8 hours). Vercel Cron calls the endpoint with `Authorization: Bearer $CRON_SECRET`.
 
-> 💡 **Free-tier tips**: Vercel Hobby caps connection count and function duration. The repo defaults to `BATCH_SIZE=2`, `pg pool max=1`, and uses lazy refresh on page open so freshness doesn't depend on a single cron window.
+> 💡 **Free-tier tips**: Vercel Hobby caps connection count and function duration. The repo defaults to `BATCH_SIZE=2`, `pg pool max=1`. API responses carry `Cache-Control: s-maxage=300`, and a 65-minute lazy-refresh fallback ensures the feed stays fresh even if a cron run is missed.
 
 ### 📝 Customizing the watchlist
 
