@@ -40,7 +40,7 @@ Tracks US, Hong Kong, and A-share markets — multi-source fetching (incl. Chine
 - **🔗 多源核验** — 同一新闻被两个及以上独立源报道时标记为 ✅ 已核验，只看主流信息可一键过滤。
 - **🤖 AI 相关性过滤** — 对所有市场新闻调用 DeepSeek 剔除"标题撞名"、纯市场杂谈、行业泛文，保证页面上的每条都真正与自选股相关。
 - **🧠 AI 中文摘要** — DeepSeek 为所有市场（美股 / 港股 / A 股）生成 1–2 句中文要点摘要，附带关键事实清单。
-- **🔄 智能刷新** — Vercel Cron 每小时自动轮换批次，每只股票约每 8 小时完整刷新一次；数据超过 65 分钟未更新时页面加载也会触发懒刷新兜底。
+- **🔄 智能刷新** — 每天 UTC 0 点由 Vercel Cron 全量刷新；用户访问时若数据超过 65 分钟未更新，页面加载会自动触发懒刷新兜底。
 - **📊 自选股概览** — 实时价格、当日涨跌幅、最新头条，一屏看完。
 - **🌙 暗色优先 UI** — Tailwind v4，移动端友好。
 
@@ -147,19 +147,19 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 1. 在 [Vercel](https://vercel.com/new) 导入这个仓库。
 2. 在项目 **Settings → Environment Variables** 里加入 `DATABASE_URL` / `FINNHUB_API_KEY` / `DEEPSEEK_API_KEY` / `CRON_SECRET`（三个环境都加）。
 3. 给项目挂上 **Vercel Postgres** 或 **Neon**，会自动注入 `DATABASE_URL`。
-4. 部署。`vercel.json` 已定义每小时触发的 cron：
+4. 部署。`vercel.json` 已定义每日 UTC 0 点触发的 cron：
 
    ```json
    {
      "crons": [
-       { "path": "/api/cron/fetch-news", "schedule": "0 * * * *" }
+       { "path": "/api/cron/fetch-news", "schedule": "0 0 * * *" }
      ]
    }
    ```
 
-   每次 Cron 触发会根据当前 UTC 小时自动选择要刷新的批次（16 只标的分 8 批轮转，约每 8 小时完整刷新一轮）。Vercel Cron 会自动以 `Authorization: Bearer $CRON_SECRET` 调用该端点。
+   Vercel Cron 会自动以 `Authorization: Bearer $CRON_SECRET` 调用该端点。
 
-> 💡 **白嫖小贴士**：Vercel Hobby 限制 `pg` 连接数与函数时长，本项目默认 `BATCH_SIZE=2`、`pg pool max=1`。API 响应已加 `Cache-Control: s-maxage=300`，叠加每小时 cron 与 65 分钟懒刷新阈值，在免费套餐下也能保持较好的数据新鲜度。
+> 💡 **白嫖小贴士**：Vercel Hobby 限制每日只能有一次 Cron 触发、`pg` 连接数上限为 1、函数执行时长 10 秒。本项目默认 `BATCH_SIZE=2`、`pg pool max=1`，并在用户访问时通过懒刷新（超过 65 分钟未更新自动补刷）弥补单次 Cron 的覆盖不足。API 响应已加 `Cache-Control: s-maxage=300` 降低数据库压力。如需更高频率的 Cron，升级至 Pro 套餐即可。
 
 ### 📝 自定义自选股
 
@@ -226,7 +226,7 @@ The product goal is simple: **let a regular retail investor understand, in under
 - **🔗 Cross-source verification** — Stories reported by two or more independent sources get a ✅ Verified badge; a single-tap filter narrows the feed to verified only.
 - **🤖 AI relevance filter** — DeepSeek removes ticker-collision noise, generic market chatter, and off-topic industry articles for all markets (US, HK, CN) before they hit your feed.
 - **🧠 AI Chinese summaries** — DeepSeek produces a 1–2 sentence Chinese summary plus key bullet points for every market, not just US stocks.
-- **🔄 Smart refresh** — Vercel Cron runs hourly, rotating through batches so each stock refreshes approximately every 8 hours. A lazy refresh also fires on page load if data is older than 65 minutes.
+- **🔄 Smart refresh** — A Vercel Cron runs a full refresh daily at 00:00 UTC. A lazy refresh also fires on page load if data is older than 65 minutes, ensuring freshness between cron windows.
 - **📊 Watchlist snapshot** — Live price, day change %, and latest headline at a glance.
 - **🌙 Dark-first UI** — Tailwind v4, mobile-friendly.
 
@@ -334,19 +334,19 @@ Loop `batch` from 0 to N-1 to cover the full watchlist (small batches keep each 
 1. Import the repo from [Vercel](https://vercel.com/new).
 2. Under **Settings → Environment Variables**, add `DATABASE_URL`, `FINNHUB_API_KEY`, `DEEPSEEK_API_KEY`, and `CRON_SECRET` for all three environments.
 3. Attach **Vercel Postgres** or **Neon** — `DATABASE_URL` gets injected automatically.
-4. Deploy. `vercel.json` defines an hourly cron:
+4. Deploy. `vercel.json` defines a daily cron at 00:00 UTC:
 
    ```json
    {
      "crons": [
-       { "path": "/api/cron/fetch-news", "schedule": "0 * * * *" }
+       { "path": "/api/cron/fetch-news", "schedule": "0 0 * * *" }
      ]
    }
    ```
 
-   Each run automatically selects the correct batch based on the current UTC hour (16 stocks across 8 batches → full refresh cycle every ~8 hours). Vercel Cron calls the endpoint with `Authorization: Bearer $CRON_SECRET`.
+   Vercel Cron calls the endpoint with `Authorization: Bearer $CRON_SECRET`.
 
-> 💡 **Free-tier tips**: Vercel Hobby caps connection count and function duration. The repo defaults to `BATCH_SIZE=2`, `pg pool max=1`. API responses carry `Cache-Control: s-maxage=300`, and a 65-minute lazy-refresh fallback ensures the feed stays fresh even if a cron run is missed.
+> 💡 **Free-tier tips**: Vercel Hobby allows only one cron trigger per day and caps `pg` connections at 1 and function duration at 10s. The repo defaults to `BATCH_SIZE=2`, `pg pool max=1`. A 65-minute lazy-refresh fallback fires on page load to supplement the daily cron. API responses carry `Cache-Control: s-maxage=300` to reduce database load. Upgrade to Pro to unlock higher-frequency cron schedules.
 
 ### 📝 Customizing the watchlist
 
