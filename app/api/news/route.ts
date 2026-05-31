@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { fetchAndProcessNewsBatch } from "@/lib/pipeline/fetch-all";
 
-const STALE_MINUTES = 5;
+const STALE_MINUTES = 65;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -107,11 +107,13 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       items: enriched,
       nextCursor: hasMore ? String(items[items.length - 1]?.id) : null,
       refreshing: isStale,
     });
+    response.headers.set("Cache-Control", "s-maxage=300, stale-while-revalidate=60");
+    return response;
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

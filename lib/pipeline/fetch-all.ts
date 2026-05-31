@@ -71,10 +71,9 @@ export async function fetchAndProcessNewsBatch(
     });
     if (existing) continue;
 
-    // AI relevance filter for US stocks (good coverage). Skip for HK/CN (sparse coverage).
     const dbStock = await prisma.stock.findUnique({ where: { id: stockId } });
     let filteredArticles = group.articles;
-    if (dbStock && dbStock.market === "US" && group.articles.length > 0) {
+    if (dbStock && group.articles.length > 0) {
       const relevantIndices = await filterRelevantArticles(
         dbStock.nameCn,
         dbStock.symbol,

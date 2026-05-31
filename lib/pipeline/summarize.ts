@@ -92,32 +92,46 @@ ${titleList}`;
 
 // ---- Shared helper ----
 
-async function callDeepSeek(prompt: string, maxTokens: number): Promise<string | null> {
+async function callDeepSeek(prompt: string, maxTokens: number, retries = 3): Promise<string | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) return null;
 
-  try {
-    const res = await fetch(DEEPSEEK_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature: 0.2,
-      }),
-    });
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const res = await fetch(DEEPSEEK_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "deepseek-chat",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: maxTokens,
+          temperature: 0.2,
+        }),
+      });
 
-    if (!res.ok) return null;
+      if (res.ok) {
+        const data: DeepSeekResponse = await res.json();
+        return data.choices?.[0]?.message?.content?.trim() || null;
+      }
 
-    const data: DeepSeekResponse = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || null;
-  } catch {
-    return null;
+      if (res.status === 429 && attempt < retries - 1) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+
+      return null;
+    } catch {
+      if (attempt < retries - 1) {
+        await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+        continue;
+      }
+      return null;
+    }
   }
+  return null;
 }
 
 interface DeepSeekResponse {

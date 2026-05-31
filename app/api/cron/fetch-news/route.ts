@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAndProcessNewsBatch } from "@/lib/pipeline/fetch-all";
 import { refreshMarketData } from "@/lib/market";
+import { TRACKED_STOCKS } from "@/lib/stocks";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -10,8 +11,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const BATCH_SIZE = 2;
+  const batchesTotal = Math.ceil(TRACKED_STOCKS.length / BATCH_SIZE);
   const batchParam = request.nextUrl.searchParams.get("batch");
-  const batch = batchParam ? parseInt(batchParam) : 0;
+  const batch = batchParam ? parseInt(batchParam) : new Date().getUTCHours() % batchesTotal;
 
   try {
     const [newsResult] = await Promise.all([

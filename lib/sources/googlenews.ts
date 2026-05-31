@@ -1,41 +1,82 @@
 import { RawArticle, NewsFetcher } from "./types";
 
-function buildQuery(name: string): string {
-  return `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`;
+interface QueryConfig {
+  url: string;
+  limit: number;
 }
 
-export const fetchGoogleNews: NewsFetcher = async ({ name, stockId }) => {
-  try {
-    const url = buildQuery(name);
-    const res = await fetch(url, { next: { revalidate: 0 } });
+function buildEnQuery(name: string): QueryConfig {
+  return {
+    url: `https://news.google.com/rss/search?q=${encodeURIComponent(name + " stock")}&hl=en-US&gl=US&ceid=US:en`,
+    limit: 10,
+  };
+}
 
-    if (!res.ok) return [];
+function buildZhQuery(nameCn: string): QueryConfig {
+  return {
+    url: `https://news.google.com/rss/search?q=${encodeURIComponent(nameCn + " 股票")}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans`,
+    limit: 10,
+  };
+}
 
-    const text = await res.text();
-    const items = text.match(/<item>[\s\S]*?<\/item>/g) || [];
-    const articles: RawArticle[] = [];
+async function fetchFromQuery(query: QueryConfig, stockId: number): Promise<RawArticle[]> {
+  const res = await fetch(query.url, { next: { revalidate: 0 } });
+  if (!res.ok) return [];
 
-    for (const item of items.slice(0, 10)) {
-      const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/);
-      const linkMatch = item.match(/<link>(.*?)<\/link>/);
-      const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/);
-      const dateMatch = item.match(/<pubDate>(.*?)<\/pubDate>/);
+  const text = await res.text();
+  const items = text.match(/<item>[\s\S]*?<\/item>/g) || [];
+  const articles: RawArticle[] = [];
 
-      if (titleMatch && linkMatch) {
-        const snippet = descMatch
-          ? descMatch[1].replace(/<[^>]*>/g, "").slice(0, 300)
-          : "";
-        articles.push({
-          title: titleMatch[1].trim(),
-          snippet,
-          url: linkMatch[1].trim(),
-          source: "googlenews" as const,
-          publishedAt: dateMatch ? new Date(dateMatch[1]) : new Date(),
-          stockId,
-        });
-      }
+  for (const item of items.slice(0, query.limit)) {
+    const titleMatch = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/);
+    const linkMatch = item.match(/<link>(.*?)<\/link>/);
+    const descMatch = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/);
+    const dateMatch = item.match(/<pubDate>(.*?)<\/pubDate>/);
+
+    if (titleMatch && linkMatch) {
+      const snippet = descMatch
+        ? descMatch[1].replace(/<[^>]*>/g, "").slice(0, 300)
+        : "";
+      articles.push({
+        title: titleMatch[1].trim(),
+        snippet,
+        url: linkMatch[1].trim(),
+        source: "googlenews" as const,
+        publishedAt: dateMatch ? new Date(dateMatch[1]) : new Date(),
+        stockId,
+      });
     }
-    return articles;
+  }
+  return articles;
+}
+
+export const fetchGoogleNews: NewsFetcher = async ({ name, nameCn, market, stockId }) => {
+  try {
+    const isCjk = market === "CN" || market === "HK";
+
+    if (isCjk) {
+      // Fetch English and Chinese queries in parallel for CN/HK stocks
+      const [enArticles, zhArticles] = await Promise.allSettled([
+        fetchFromQuery(buildEnQuery(name), stockId),
+        fetchFromQuery(buildZhQuery(nameCn), stockId),
+      ]);
+
+      const en = enArticles.status === "fulfilled" ? enArticles.value : [];
+      const zh = zhArticles.status === "fulfilled" ? zhArticles.value : [];
+
+      // Deduplicate by URL across both result sets
+      const seen = new Set<string>();
+      const combined: RawArticle[] = [];
+      for (const article of [...en, ...zh]) {
+        if (!seen.has(article.url)) {
+          seen.add(article.url);
+          combined.push(article);
+        }
+      }
+      return combined;
+    }
+
+    return fetchFromQuery(buildEnQuery(name), stockId);
   } catch {
     return [];
   }

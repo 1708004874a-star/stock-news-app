@@ -35,12 +35,14 @@ export async function GET() {
 
     const headlinesMap = new Map(latestHeadlines.map((h) => [h.symbol, h.headline]));
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       stocks.map((s) => ({
         ...s,
         latestHeadline: headlinesMap.get(s.symbol) || null,
       }))
     );
+    response.headers.set("Cache-Control", "s-maxage=300, stale-while-revalidate=60");
+    return response;
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

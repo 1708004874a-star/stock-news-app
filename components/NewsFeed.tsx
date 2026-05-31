@@ -41,7 +41,7 @@ export function NewsFeed() {
 
   useEffect(() => {
     fetchNews();
-    const interval = setInterval(fetchNews, 60000);
+    const interval = setInterval(fetchNews, 300000);
     return () => clearInterval(interval);
   }, [fetchNews]);
 
